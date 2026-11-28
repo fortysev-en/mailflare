@@ -1,0 +1,28 @@
+# Mailflare email relay
+
+A small Cloudflare Worker for self-hosted Mailflare installs that want to keep
+receiving mail through Cloudflare Email Routing (no port 25, no MX changes).
+
+1. `npm install`, then `npx wrangler secret put MAILFLARE_URL` (your server's
+   public URL, e.g. `https://mail.example.com`) and
+   `npx wrangler secret put INBOUND_WEBHOOK_SECRET` (the same value as in the
+   server's `.env.docker`).
+2. `npm run deploy`.
+3. In the Cloudflare dashboard, under Email Routing for your zone, route the
+   catch-all, or the addresses you want, to the `mailflare-email-relay` Worker.
+
+Each message is posted to `/api/inbound` on your server with an HMAC
+signature. The server stores it and replies with the routing decision, so
+reject rules and forwarding rules still act at Cloudflare's edge. If the server
+is unreachable or answers with an error, the Worker throws, so Email Routing
+returns a temporary failure and the sender's mail server retries later.
+
+A server on Vercel (see [docs/vercel.md](../../docs/vercel.md)) cannot receive more than 4.5 MB in one request,
+so the Worker puts larger messages in the server's object storage through `/api/inbound/upload` first. Other
+servers answer 404 there and get the message directly.
+
+When a message needs more than one forward (a forwarding rule that keeps a
+copy plus account forwarding), the server lists them all in `forwardToAll` and
+the Worker forwards to each. A relay deployed before that only reads
+`forwardTo` and keeps forwarding to one address; run `npm run deploy` again to
+pick up the change.
